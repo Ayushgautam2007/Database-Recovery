@@ -1,0 +1,41 @@
+import json
+import psycopg2
+
+# PostgreSQL connection
+conn = psycopg2.connect(dbname="postgres", user="postgres", password="yourpassword", host="localhost")
+cur = conn.cursor()
+
+# Path to your binlog file
+binlog_file = "/var/lib/pgsql/binlog/pg_binlog.json"
+
+with open(binlog_file) as f:
+    for line in f:
+        data = json.loads(line)
+        for change in data.get("change", []):
+            kind = change.get("kind")
+            table = change.get("table")
+            col_names = change.get("columnnames", [])
+            col_values = change.get("columnvalues", [])
+
+            if not col_names or not col_values:
+                continue  # skip if missing data
+
+            if kind == "insert":
+                placeholders = ','.join(['%s'] * len(col_values))
+                columns = ','.join(col_names)
+                query = f"INSERT INTO {table} ({columns}) VALUES ({placeholders})"
+                cur.execute(query, col_values)
+
+            elif kind == "update":
+                # Identify primary key as the first column
+                pk_col = col_names[0]
+                set_cols = col_names[1:]
+                set_placeholders = ','.join([f"{col}=%s" for col in set_cols])
+                query = f"UPDATE {table} SET {set_placeholders} WHERE {pk_col}=%s"
+                cur.execute(query, col_values[1:] + [col_values[0]]
+
+# Commit changes
+conn.commit()
+cur.close()
+conn.close()
+print("Recovery completed: INSERTs and UPDATEs applied for all tables.")

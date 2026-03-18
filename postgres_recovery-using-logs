@@ -1,33 +1,30 @@
 PostgreSQL WAL Logical Replication Setup with wal2json
-1. Install PostgreSQL 13
+## 1. Install PostgreSQL 13
 yum module reset postgresql -y
 yum module enable postgresql:13 -y
 yum install postgresql-server postgresql-devel gcc make -y
-2. Initialize Database
+
+## 2. Initialize Database
 postgresql-setup --initdb
-
 Error (if directory not empty):
-
 ERROR: Data directory /var/lib/pgsql/data is not empty!
 
 Fix:
-
 systemctl stop postgresql
 mv /var/lib/pgsql/data /var/lib/pgsql/data_old
 postgresql-setup --initdb
-3. Start PostgreSQL Service
+
+## 3. Start PostgreSQL Service
 systemctl enable postgresql --now
 
-Expected Output:
-
-Created symlink /etc/systemd/system/multi-user.target.wants/postgresql.service
-4. Verify Development Files
+## 4. Verify Development Files
 find /usr -name pgxs.mk
 
 Expected Output:
-
 /usr/lib64/pgsql/pgxs/src/makefiles/pgxs.mk
-5. Build wal2json
+
+##5. Build wal2json
+
 cd /wal2json
 make
 make install
@@ -37,16 +34,15 @@ If Error:
 gcc: error: redhat-hardened-cc1: No such file or directory
 
 Fix:
-
 yum install redhat-rpm-config -y
 make clean
 make
 make install
 
 Expected Output:
-
 /usr/bin/install -c -m 755 wal2json.so '/usr/lib64/pgsql/'
-6. Configure PostgreSQL for Logical Replication
+
+## 6. Configure PostgreSQL for Logical Replication
 
 Edit postgresql.conf:
 
@@ -57,7 +53,8 @@ max_wal_senders = 5
 Restart PostgreSQL:
 
 systemctl restart postgresql
-7. Connect to PostgreSQL
+
+## 7. Connect to PostgreSQL
 psql -U postgres
 
 If error:
@@ -68,7 +65,7 @@ Fix:
 
 su - postgres
 psql
-8. Create Logical Replication Slot
+## 8. Create Logical Replication Slot
 SELECT * FROM pg_create_logical_replication_slot('binlog_slot', 'wal2json');
 
 Expected Output:
@@ -76,16 +73,17 @@ Expected Output:
  slot_name  |    lsn
 ------------+-----------
  binlog_slot | 0/XXXXXXXX
-9. Create Test Table
+
+## 9. Create Test Table
 CREATE TABLE test_log(id INT, name TEXT);
 INSERT INTO test_log VALUES (1, 'Ayush');
 Check Slot Changes
 SELECT * FROM pg_logical_slot_get_changes('binlog_slot', NULL, NULL);
 
 Expected Output:
-
 {"change":[{"kind":"insert","table":"test_log","columnvalues":[1,"Ayush"]}]}
-10. Start Continuous Binlog Capture
+
+## 10. Start Continuous Binlog Capture
 
 Create directory for logs:
 
@@ -103,27 +101,30 @@ Warning:
 WARNING: table "test_log" without primary key or replica identity is nothing
 
 Fix:
-
 ALTER TABLE test_log ADD PRIMARY KEY (id);
-11. Generate Sample Activity
+
+## 11. Generate Sample Activity
 INSERT INTO test_log VALUES (100, 'Test');
 UPDATE test_log SET name='Updated' WHERE id=1;
 DELETE FROM test_log WHERE id=100;
-12. Check Binlog File
+
+## 12. Check Binlog File
 cat /var/lib/pgsql/binlog/pg_binlog.json
 
 Expected Output:
-
 {"change":[{"kind":"insert","table":"test_log","columnvalues":[100,"Test"]}]}
 {"change":[{"kind":"update","table":"test_log","columnvalues":[1,"Updated"]}]}
 {"change":[{"kind":"delete","table":"test_log","columnvalues":[100]}]}
-13. Common Issues & Fixes
+
+## 13. Common Issues & Fixes
 Issue	Fix
 File empty or not updating	Ensure pg_recvlogical is running continuously
 Stopped process (^Z)	Run fg or restart command
 Wrong file path	Use /var/lib/pgsql/binlog/pg_binlog.json
 Peer authentication failed	Already logged in as postgres user, no su needed
-14. Run pg_recvlogical in Background (Optional)
+
+## 14. Run pg_recvlogical in Background (Optional)
 nohup pg_recvlogical -d postgres \
   --slot=binlog_slot \
   --start -f /var/lib/pgsql/binlog/pg_binlog.json &
+
